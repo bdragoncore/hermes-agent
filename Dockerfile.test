@@ -1,0 +1,28 @@
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+RUN apt-get -o Acquire::Retries=3 update && \
+    apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
+        ca-certificates curl git ripgrep procps && \
+    rm -rf /var/lib/apt/lists/* && \
+    pip install --no-cache-dir uv==0.11.6
+
+WORKDIR /opt/hermes
+
+COPY pyproject.toml uv.lock ./
+RUN touch ./README.md
+RUN uv sync --frozen --no-install-project
+
+COPY . .
+RUN uv pip install --no-cache-dir --no-deps -e "."
+
+ENV HERMES_HOME=/opt/data
+ENV HERMES_WRITE_SAFE_ROOT=/opt/data
+ENV HERMES_WEB_DIST=/opt/hermes/hermes_cli/web_dist
+ENV PATH="/opt/hermes/.venv/bin:${PATH}"
+RUN mkdir -p /opt/data
+
+ENTRYPOINT ["/opt/hermes/.venv/bin/hermes"]
+CMD ["--version"]

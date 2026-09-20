@@ -1,0 +1,5 @@
+name: openmind-provider
+kind: model-provider
+version: 1.0.0
+description: OpenMind proxy on pibox (Tor → OpenCode Zen)
+author: bperris
