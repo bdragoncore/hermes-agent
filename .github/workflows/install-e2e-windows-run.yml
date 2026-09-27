@@ -222,7 +222,7 @@ jobs:
         run: |
           $uvDir = Get-ChildItem $env:HERMES_RUNTIME_DIR -Filter 'uv-*' -Directory | Select-Object -First 1
           if (-not $uvDir) { throw "uv not found under $env:HERMES_RUNTIME_DIR" }
-          & (Join-Path $uvDir.FullName 'uv.exe') pip install --system --python $env:HERMES_PYTHON --quiet "pywinpty==3.0.5"
+          & (Join-Path $uvDir.FullName 'uv.exe') pip install --system --python $env:HERMES_PYTHON --quiet "pywinpty==3.0.5" "py-spy==0.4.1"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -c "import winpty; print('pty-run dependency ready')"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

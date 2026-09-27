@@ -134,7 +134,7 @@ $OutputEncoding = [Console]::OutputEncoding
 # through $DriverPython. PATH keeps setup-pm's tools, as older installers
 # expect uv/ripgrep there.
 $DriverPython = if ($env:HERMES_PYTHON) { $env:HERMES_PYTHON } else { (Get-Command python.exe -ErrorAction Stop).Source }
-foreach ($jobOnly in @('HERMES_RUNTIME_DIR', 'HERMES_PYTHON', 'VIRTUAL_ENV')) {
+foreach ($jobOnly in @('VIRTUAL_ENV')) {  # HANG PROBE: reproduce the pre-isolation state
     if (Test-Path -LiteralPath "env:$jobOnly") { Remove-Item -LiteralPath "env:$jobOnly" }
 }
 
@@ -515,6 +515,11 @@ function Invoke-HermesUpdate {
     New-Item -ItemType Directory -Path (Join-Path $WorkRoot "logs") -Force | Out-Null
     $log = Join-Path $WorkRoot "logs\update.log"
     $hangLog = Join-Path $WorkRoot "logs\update-hang-processes.txt"
+    # HANG PROBE (c7883282): drop the job store for the update only.
+    if ($env:HERMES_RUNTIME_DIR -and (Test-Path -LiteralPath (Join-Path $HermesHome "tools"))) {
+        Write-Host "  HANG PROBE: update runs on $HermesHome\tools, not HERMES_RUNTIME_DIR"
+        Remove-Item Env:HERMES_RUNTIME_DIR
+    }
     $watchdog = Start-HangWatchdog -Minutes $UpdateDeadlineMinutes -EvidencePath $hangLog
     Push-Location $InstallDir
     try {
@@ -538,7 +543,7 @@ function Invoke-HermesUpdate {
 # and stops this leg's processes, so a hang fails with evidence -- whether
 # the updater itself is stuck or a detached child still holds its output
 # pipe -- instead of being cancelled blind at the job cap.
-$UpdateDeadlineMinutes = 45
+$UpdateDeadlineMinutes = 18
 
 function Start-HangWatchdog([int]$Minutes, [string]$EvidencePath) {
     if (Test-Path -LiteralPath $EvidencePath) { Remove-Item -LiteralPath $EvidencePath -Force }
@@ -567,6 +572,13 @@ function Start-HangWatchdog([int]$Minutes, [string]$EvidencePath) {
         $lines += @($leg | ForEach-Object { & $row $_ })
         $lines += @('', '== every process, oldest first ==')
         $lines += @($all | Sort-Object CreationDate | ForEach-Object { & $row $_ })
+        $pyspy = Join-Path (Split-Path $using:DriverPython) 'py-spy.exe'
+        if (Test-Path -LiteralPath $pyspy) {
+            foreach ($p in (@($tree) + @($leg) | Where-Object { $_.Name -match '^(python|pythonw|hermes)' } | Sort-Object ProcessId -Unique)) {
+                $lines += @('', "== py-spy dump --pid $($p.ProcessId) ($($p.Name)) ==")
+                $lines += @(& $pyspy dump --pid $p.ProcessId --nonblocking 2>&1 | ForEach-Object { "$_" })
+            }
+        } else { $lines += @('', "py-spy not found at $pyspy") }
         Set-Content -LiteralPath $out -Value $lines -Encoding UTF8
         foreach ($victim in (@($tree) + @($leg))) {
             Stop-Process -Id $victim.ProcessId -Force -ErrorAction SilentlyContinue
