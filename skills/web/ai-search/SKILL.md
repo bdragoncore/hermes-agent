@@ -52,8 +52,40 @@ python skills/web/ai-search/scripts/openmind_ai_search.py ask perplexity \
   --model "Kimi K3" --prompt "your question"
 ```
 
-`ask` runs the whole flow (find/activate tab → optional model select → type →
-submit → read answer); `model` selects a model only; `tabs` lists AI tabs.
+`ask` runs the whole flow (find/activate tab → optional model select → clear
+composer → type or paste → submit → read answer); `model` selects a model only;
+`tabs` lists AI tabs.
+
+- Prompts over 400 chars are **pasted** in one step (typing sends one trusted
+  key event per character and freezes the tab for minutes on multi-KB text);
+  the helper verifies the paste landed before submitting.
+- `--prompt-file` reads the prompt from a file (no shell quoting / ARG_MAX).
+- `--new` starts a fresh thread so the answer isn't mixed with history.
+- On Perplexity only the new answer (`.prose`) is returned, with `<pre>` code
+  as fenced blocks. Long code answers may come back as **Artifacts** (file
+  cards with a Download button → "Download as file" saves into the
+  container's `/root/Downloads`; `docker cp ai-browser:/root/Downloads/. dest/`).
+
+### Per-site behavior (verified 2026-09-29)
+
+| Site | Input | Submit | Answer read from | Notes |
+|---|---|---|---|---|
+| Perplexity | `[contenteditable=true]` | Enter | `.prose` | Long code may come back as Artifacts |
+| Claude | `[contenteditable=true]` | click `[data-testid=chat-input-send]` | `[data-testid=assistant-message]` | The API's Enter inserts a newline in ProseMirror |
+| Gemini | `.ql-editor` | click `button[aria-label="Send message"]` | `.model-response-text` | Enter opens the model picker |
+| Grok | `[contenteditable=true]` | Enter | `[data-testid=assistant-message]` | |
+| DeepSeek | `textarea` | Enter | `.ds-assistant-message-main-content` | |
+| Kimi | `[contenteditable=true]` | click `.send-button-container` | `.markdown-container:not(.toolcall-content-text)` | Skips the "thinking" pane |
+| Z.ai | `#chat-input` | click `button.sendMessageButton` | `.chat-assistant .markdown-prose` | API typing doesn't reach the textarea (focus stays on a button): the helper sets the value natively. A "New model" pop-up can cover the composer: the helper closes it. |
+| Qwen | `textarea.message-input-textarea` | click `.message-input-right-button-send` | not yet known | Shows a **bot-verification slider** after sending. A person must solve it in the browser (noVNC `http://pibox:6080/vnc.html`); the helper stops with an error instead of solving it. |
+
+- Sites with an answer selector return **only the new reply**; others return
+  the page text (which includes the chat-history sidebar — don't store it).
+- Short prompts are typed, then verified; if the text didn't land, the helper
+  sets it directly. `--new` waits for the page load to finish before touching
+  it (evaluating JS mid-navigation can block the browser API).
+- The helper **never solves** human-verification challenges ("slide to verify",
+  CAPTCHAs): it raises an error naming the challenge.
 
 ## Quick Reference
 
@@ -62,6 +94,7 @@ submit → read answer); `model` selects a model only; `tabs` lists AI tabs.
 | List AI tabs | `python .../openmind_ai_search.py tabs` |
 | Ask a site | `python .../openmind_ai_search.py ask perplexity --prompt "..."` |
 | Ask with a model | `... ask perplexity --model "Kimi K3" --prompt "..."` |
+| Long prompt (code, specs) | `... ask perplexity --new --model "Kimi K3" --prompt-file brief.md --timeout 1500` |
 | Select a model only | `... model perplexity "Kimi K3"` |
 | Ordinary web page | native `web_extract` (static) / `browser_navigate` (JS) |
 | Blocked page | `blocked-page-recovery` ladder |
