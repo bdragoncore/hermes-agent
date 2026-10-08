@@ -27,6 +27,8 @@ _FALLBACK_MODELS = (
     "zen-nemotron-3.5-lightning-free",
     "zen-longcat-2.5-preview-free",
     "zen-space-bunny-free",
+    "zen-step-5-preview-free",
+    "zen-ling-3.1-flash-free",
     # Kilo free (per-IP free pool)
     "kilo-kilo-auto/free",
     "kilo-openrouter/free",
