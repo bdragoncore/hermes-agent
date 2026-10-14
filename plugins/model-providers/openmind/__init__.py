@@ -20,8 +20,6 @@ _FALLBACK_MODELS = (
     # Zen free tier
     "zen-muse-spark-1.2-contributor-free",
     "zen-muse-spark-1.3-contributor-free",
-    "zen-ling-3.0-flash-fin-free",
-    "zen-mimo-v2.5-free",
     "zen-mimo-v2.6-flash-free",
     "zen-nemotron-3-ultra-free",
     "zen-nemotron-3.5-lightning-free",
@@ -55,7 +53,7 @@ openmind = ProviderProfile(
     description="OpenMind proxy on pibox (Tor → OpenCode Zen)",
     env_vars=("OPENMIND_BASE_URL",),
     base_url="http://pibox:5000/v1",
-    default_aux_model="zen-ling-3.0-flash-fin-free",
+    default_aux_model="zen-ling-3.1-flash-free",
     fallback_models=_FALLBACK_MODELS,
 )
 
