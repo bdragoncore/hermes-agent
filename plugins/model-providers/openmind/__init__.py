@@ -26,19 +26,13 @@ _FALLBACK_MODELS = (
     "zen-longcat-2.5-preview-free",
     "zen-space-bunny-free",
     "zen-step-5-preview-free",
-    "zen-ling-3.1-flash-free",
     # Kilo free (per-IP free pool)
     "kilo-kilo-auto/free",
     "kilo-openrouter/free",
-    "kilo-nex-agi/nex-n2.5-pro:free",
-    "kilo-z-ai/glm-5.2:free",
     "kilo-nvidia/nemotron-3-ultra-550b-a55b:free",
     "kilo-nvidia/nemotron-3-super-120b-a12b:free",
     # OpenRouter free (separate quota pool from kilo)
     "openrouter-openrouter/free",
-    "openrouter-deepseek/deepseek-v4-flash-0731:free",
-    "openrouter-qwen/qwen3.8-27b:free",
-    "openrouter-z-ai/glm-5.2:free",
     # Synthetic (aliases auto-route to the current checkpoint)
     "synthetic-syn:large:text",
     "synthetic-syn:small:text",
