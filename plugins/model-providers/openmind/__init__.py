@@ -25,7 +25,7 @@ _FALLBACK_MODELS = (
     "zen-nemotron-3.5-lightning-free",
     "zen-longcat-2.5-preview-free",
     "zen-space-bunny-free",
-    "zen-step-5-preview-free",
+    "zen-cat-jam-free",
     # Kilo free (per-IP free pool)
     "kilo-kilo-auto/free",
     "kilo-openrouter/free",
@@ -47,7 +47,7 @@ openmind = ProviderProfile(
     description="OpenMind proxy on pibox (Tor → OpenCode Zen)",
     env_vars=("OPENMIND_BASE_URL",),
     base_url="http://pibox:5000/v1",
-    default_aux_model="zen-ling-3.1-flash-free",
+    default_aux_model="zen-mimo-v2.6-flash-free",
     fallback_models=_FALLBACK_MODELS,
 )
 
