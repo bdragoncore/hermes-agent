@@ -19,7 +19,6 @@ _FALLBACK_MODELS = (
     "zen-big-pickle",
     # Zen free tier
     "zen-muse-spark-1.2-contributor-free",
-    "zen-muse-spark-1.3-contributor-free",
     "zen-mimo-v2.6-flash-free",
     "zen-nemotron-3-ultra-free",
     "zen-nemotron-3.5-lightning-free",
