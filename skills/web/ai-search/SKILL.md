@@ -39,6 +39,11 @@ path; do not route around it.
   browser REST API (default `http://127.0.0.1:8790`; override with `--api` or
   `$OPENMIND_BROWSER_API`). This is the only browser where the AI sites are
   logged in, so every AI-site request goes through it.
+- **The `ai-browser` container must be up.** It runs `restart: no`, so a host
+  reboot leaves the API refusing connections. The helper preflights the API and
+  exits 1 with the fix when it is down; on `error: ... unreachable` run
+  `docker start ai-browser` (`docker ps -a | grep ai-browser` to check) and retry.
+  Never fall back to native tools on an unreachable-API error — report it.
 - Native `web_search`, `web_extract`, `browser_navigate` for ordinary pages.
 - For blocked/paywalled/bot-walled pages, load `blocked-page-recovery` and
   follow its ladder.
@@ -52,9 +57,10 @@ python skills/web/ai-search/scripts/openmind_ai_search.py ask perplexity \
   --model "Kimi K3" --prompt "your question"
 ```
 
-`ask` runs the whole flow (find/activate tab → optional model select → clear
-composer → type or paste → submit → read answer); `model` selects a model only;
-`tabs` lists AI tabs.
+`ask` runs the whole flow (preflight → find/activate tab → optional model select →
+clear composer → type or paste → submit → read answer); `model` selects a model
+only; `tabs` lists AI tabs. Every subcommand exits non-zero with `error: <reason>`
+rather than printing an empty success — a blank answer means the ask failed.
 
 - Prompts over 400 chars are **pasted** in one step (typing sends one trusted
   key event per character and freezes the tab for minutes on multi-KB text);
@@ -169,9 +175,12 @@ site/model answered and any failures.
 - **Max-only models are gated** on a Pro account; report, don't substitute.
 - **Don't navigate a tab to `*/api/auth/session`** — it poisons/clears the
   site session.
+- **An empty stdout is a failure, not an answer.** `ask` exits non-zero on an
+  empty reply and on an unreachable API. Never report a result you didn't get.
 
 ## Verification
 
+- `... tabs` lists the site's tab (exit 0) before any ask.
 - After a model select, the composer pill shows the requested name (the helper
   prints it, e.g. "Kimi K3 Thinking").
 - The reply text is non-empty and contains the answer, not a login/landing page.

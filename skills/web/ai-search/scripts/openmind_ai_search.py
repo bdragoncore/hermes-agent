@@ -22,6 +22,7 @@ import os
 import re
 import sys
 import time
+import urllib.error
 import urllib.request
 
 DEFAULT_API = os.environ.get("OPENMIND_BROWSER_API", "http://127.0.0.1:8790")
@@ -75,8 +76,8 @@ class Browser:
     def _post(self, path: str, payload: dict, timeout: int = 60):
         return _req("POST", self.api + path, payload, timeout)
 
-    def _get(self, path: str):
-        return _req("GET", self.api + path)
+    def _get(self, path: str, timeout: int = 60):
+        return _req("GET", self.api + path, timeout=timeout)
 
     def tabs(self) -> list[dict]:
         return self._get("/api/browser/tabs").get("tabs", [])
@@ -95,6 +96,34 @@ class Browser:
 
     def key(self, tab_id: int, key: str, modifiers: int = 0):
         return self._post("/api/browser/key", {"tab_id": tab_id, "key": key, "modifiers": modifiers})
+
+
+def preflight(browser: Browser) -> dict:
+    """Fail fast, and legibly, when the browser API isn't serving.
+
+    The container that hosts the logged-in AI tabs runs with ``restart: no``, so a host
+    reboot leaves the API refusing connections. Without this check the caller sees either a
+    bare ``URLError`` traceback or -- worse -- an empty answer printed as success, and
+    silently falls back to native tools believing the ask worked.
+    """
+    try:
+        status = browser._get("/", timeout=15)
+    except urllib.error.URLError as exc:
+        raise RuntimeError(
+            f"OpenMind browser API unreachable at {browser.api} ({exc.reason}). "
+            f"The AI sites are only logged in there, so no ask can succeed. "
+            f"Start it with `docker start ai-browser` (check `docker ps -a | grep ai-browser`), "
+            f"then re-run. Native web_search/web_extract still work for ordinary pages."
+        ) from exc
+    except OSError as exc:
+        raise RuntimeError(f"OpenMind browser API unreachable at {browser.api}: {exc}") from exc
+    if not status.get("ok"):
+        raise RuntimeError(
+            f"OpenMind browser API at {browser.api} is not ready "
+            f"(status={status.get('status')!r}, ok={status.get('ok')!r}). "
+            f"Check `docker logs ai-browser`."
+        )
+    return status
 
 
 def find_tab(browser: Browser, host: str) -> dict | None:
@@ -410,12 +439,14 @@ def ask(browser: Browser, site: str, prompt: str, model: str | None = None,
 
 
 def _cmd_tabs(browser: Browser, args):
+    preflight(browser)
     for tab in browser.tabs():
         print(f"{tab['id']}\t{tab.get('url')}\t{tab.get('title')}")
     return 0
 
 
 def _cmd_model(browser: Browser, args):
+    preflight(browser)
     print(select_model(browser, args.site, args.model, args.picker_label))
     return 0
 
@@ -427,7 +458,16 @@ def _cmd_ask(browser: Browser, args):
             prompt = f.read()
     if not prompt:
         raise RuntimeError("pass --prompt or --prompt-file")
+    preflight(browser)
     answer = ask(browser, args.site, prompt, args.model, args.picker_label, args.timeout, args.new)
+    # An empty answer is a failure, not a result: exit 0 with blank output reads as success
+    # to the caller, which then reports an answer that was never retrieved.
+    if not answer.strip():
+        raise RuntimeError(
+            f"{args.site} returned no answer within {args.timeout}s. The tab may be on a "
+            f"login/landing page, the model picker may have gated the model, or the site may "
+            f"be rate-limiting. Check it at http://pibox:6080/vnc.html and retry."
+        )
     print(answer)
     return 0
 

@@ -1,8 +1,10 @@
 """Tests for the ai-search skill (AI chat sites + model selection)."""
 import importlib.util
 import re
+import urllib.error
 from pathlib import Path
 
+import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -143,3 +145,69 @@ def test_default_api_is_local_not_gateway():
     script = _load_script()
     assert "8790" in script.DEFAULT_API
     assert ":5000" not in script.DEFAULT_API
+
+
+def test_preflight_names_the_remedy_when_api_is_down():
+    """An unreachable API must fail legibly: the container runs restart:no, so a host
+    reboot leaves it refusing connections and the caller must be told how to fix it."""
+    script = _load_script()
+
+    class _Down:
+        api = "http://127.0.0.1:8790"
+
+        def _get(self, path, timeout=60):
+            raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+
+    with pytest.raises(RuntimeError) as exc:
+        script.preflight(_Down())
+    message = str(exc.value)
+    assert "unreachable" in message
+    assert "docker start ai-browser" in message
+
+
+def test_preflight_rejects_not_ready_api():
+    """A listening-but-not-ready browser must not be treated as usable."""
+    script = _load_script()
+
+    class _NotReady:
+        api = "http://127.0.0.1:8790"
+
+        def _get(self, path, timeout=60):
+            return {"ok": False, "status": "starting"}
+
+    with pytest.raises(RuntimeError) as exc:
+        script.preflight(_NotReady())
+    assert "not ready" in str(exc.value)
+
+
+def test_preflight_passes_a_healthy_api():
+    script = _load_script()
+
+    class _Healthy:
+        api = "http://127.0.0.1:8790"
+
+        def _get(self, path, timeout=60):
+            return {"ok": True, "status": "ready", "tab_count": 9}
+
+    assert script.preflight(_Healthy())["tab_count"] == 9
+
+
+def test_ask_reports_empty_answer_instead_of_printing_success():
+    """An empty answer must be a non-zero error: exit 0 with blank output reads as a
+    successful ask and the caller reports a reply that was never retrieved."""
+    script = _load_script()
+    monkey = _load_script()
+    monkey.preflight = lambda browser: {"ok": True}
+    monkey.ask = lambda *a, **kw: "   \n  "
+    args = monkey.build_parser().parse_args(["ask", "perplexity", "--prompt", "hi"])
+    with pytest.raises(RuntimeError) as exc:
+        monkey._cmd_ask(object(), args)
+    assert "no answer" in str(exc.value)
+
+
+def test_ask_returns_the_answer_when_one_arrives():
+    monkey = _load_script()
+    monkey.preflight = lambda browser: {"ok": True}
+    monkey.ask = lambda *a, **kw: "AI-SEARCH-OK"
+    args = monkey.build_parser().parse_args(["ask", "perplexity", "--prompt", "hi"])
+    assert monkey._cmd_ask(object(), args) == 0
