@@ -17,14 +17,18 @@ from providers.base import ProviderProfile
 # kilo-free-models.json, openrouter-free-models.json) + the synthetic aliases.
 _FALLBACK_MODELS = (
     "zen-big-pickle",
-    # Zen free tier
-    "zen-muse-spark-1.2-contributor-free",
+    # Zen free tier (2026-10-19 roster: 12 models)
+    "zen-beam-free",
+    "zen-cat-jam-free",
+    "zen-deepseek-v4.1-flash-free",
+    "zen-exo-free",
+    "zen-glm-5.3-flash-free",
+    "zen-longcat-2.5-preview-free",
     "zen-mimo-v2.6-flash-free",
+    "zen-minimax-m3.1-flash-free",
     "zen-nemotron-3-ultra-free",
     "zen-nemotron-3.5-lightning-free",
-    "zen-longcat-2.5-preview-free",
-    "zen-space-bunny-free",
-    "zen-cat-jam-free",
+    "zen-nemotron-3.5-super-vl-free",
     # Kilo free (per-IP free pool)
     "kilo-kilo-auto/free",
     "kilo-openrouter/free",
