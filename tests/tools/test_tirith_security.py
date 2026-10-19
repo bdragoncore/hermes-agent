@@ -3,6 +3,7 @@
 import io
 import json
 import os
+import platform
 import subprocess
 import tarfile
 import time
@@ -762,6 +763,87 @@ class TestEmojiVariationSelectorSuppression:
 
         assert result["action"] == "warn"
         assert result["findings"] == findings
+
+
+class TestWrongArchBinaryIsNotInstalled:
+    """A binary built for another architecture passes isfile+X_OK, so it used to satisfy
+    every local check: resolution returned it, the spawn raised Exec format error, and the
+    circuit breaker failed open -- command scanning silently off until someone read the log.
+    A wrong-arch binary must read as absent so the installer replaces it.
+    """
+
+    _HOST_MACHINE = 0xB7 if platform.machine().lower() in ("aarch64", "arm64") else 0x3E
+
+    # e_ident (16 bytes) + e_type (2) + e_version (4) = 22, but the reader only needs
+    # e_machine at offset 18:20, so pad to exactly 18 bytes and append it there.
+    _ELF_PREFIX = b"\x7fELF\x02\x01\x01" + b"\x00" * 11  # 18 bytes
+
+    def _elf_bytes(self, e_machine):
+        return self._ELF_PREFIX + e_machine.to_bytes(2, "little")
+
+    def _elf(self, tmp_path, name, e_machine):
+        p = tmp_path / name
+        p.write_bytes(self._elf_bytes(e_machine))
+        p.chmod(0o755)
+        return str(p)
+
+    def test_foreign_arch_binary_rejected(self, tmp_path):
+        from tools.tirith_security import _is_usable, _runs_on_this_host
+        other = 0x3E if self._HOST_MACHINE == 0xB7 else 0xB7
+        assert _runs_on_this_host(self._elf(tmp_path, "tirith", other)) is False
+        assert _is_usable(self._elf(tmp_path, "tirith", other)) is False
+
+    def test_host_arch_binary_accepted(self, tmp_path):
+        from tools.tirith_security import _is_usable, _runs_on_this_host
+        assert _runs_on_this_host(self._elf(tmp_path, "tirith", self._HOST_MACHINE)) is True
+        assert _is_usable(self._elf(tmp_path, "tirith", self._HOST_MACHINE)) is True
+
+    def test_non_elf_is_left_to_the_spawn(self, tmp_path):
+        """A wrapper script has no e_machine; the header check must not reject it."""
+        from tools.tirith_security import _runs_on_this_host
+        p = tmp_path / "tirith"
+        p.write_text("#!/bin/sh\nexec /usr/lib/tirith/tirith \"$@\"\n")
+        assert _runs_on_this_host(str(p)) is True
+
+    @patch("tools.tirith_security.shutil.which", return_value=None)
+    def test_wrong_arch_in_hermes_bin_triggers_reinstall(self, mock_which, tmp_path):
+        """The installed-location lookup must report a miss so the download runs."""
+        from tools.tirith_security import _find_local_tirith
+        other = 0x3E if self._HOST_MACHINE == 0xB7 else 0xB7
+        with patch("tools.tirith_security._hermes_bin_dir",
+                   return_value=str(tmp_path)), \
+             patch("tools.tirith_security.get_hermes_home", return_value=tmp_path):
+            (tmp_path / "tirith").write_bytes(self._elf_bytes(other))
+            (tmp_path / "tirith").chmod(0o755)
+            assert _find_local_tirith() is None
+
+    @patch("tools.tirith_security._mark_install_failed")
+    @patch("tools.tirith_security._is_install_failed_on_disk", return_value=False)
+    @patch("tools.tirith_security._install_tirith", return_value=("/auto/tirith", ""))
+    @patch("tools.tirith_security.shutil.which", return_value=None)
+    def test_wrong_arch_binary_downloads_replacement(self, mock_which, mock_install,
+                                                    mock_disk_check, mock_mark):
+        """End of the chain: a wrong-arch binary must not suppress the reinstall."""
+        from tools.tirith_security import _resolve_tirith_path
+        _tirith_mod._resolved_path = None
+        with patch("tools.tirith_security._hermes_bin_dir", return_value="/nonexistent"):
+            _resolve_tirith_path("tirith")
+        mock_install.assert_called_once()
+        _tirith_mod._resolved_path = None
+
+    def test_explicit_wrong_arch_path_is_reported_not_resolved(self, tmp_path):
+        """An explicit path can't be auto-replaced, but it must fail legibly rather than
+        resolve to a binary that can only fail to spawn."""
+        from tools.tirith_security import _resolve_tirith_path
+        other = 0x3E if self._HOST_MACHINE == 0xB7 else 0xB7
+        p = tmp_path / "tirith"
+        p.write_bytes(self._elf_bytes(other))
+        p.chmod(0o755)
+        _tirith_mod._resolved_path = None
+        _resolve_tirith_path(str(p))
+        assert _tirith_mod._resolved_path is _tirith_mod._INSTALL_FAILED
+        assert _tirith_mod._install_failure_reason == "explicit_path_wrong_arch"
+        _tirith_mod._resolved_path = None
 
 
 class TestIsAppTldFinding:

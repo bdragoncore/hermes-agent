@@ -13,6 +13,7 @@ import os
 import platform
 import shutil
 import stat
+import struct
 import subprocess
 import tarfile
 import tempfile
@@ -363,10 +364,51 @@ def _is_executable(path: str) -> bool:
     return os.path.isfile(path) and os.access(path, os.X_OK)
 
 
+# ELF e_machine values for the arches tirith ships. A binary whose e_machine doesn't match
+# the running host can never spawn, but it looks perfectly installed: isfile + X_OK both pass,
+# so a wrong-arch binary used to satisfy every local check and silently disable scanning
+# (fail-open on every command) until someone noticed the Exec format error in the log.
+# Reading 20 bytes of the header is far cheaper than the spawn it replaces.
+_ELF_MACHINE_BY_ARCH = {"x86_64": 0x3E, "amd64": 0x3E, "aarch64": 0xB7, "arm64": 0xB7}
+
+
+def _runs_on_this_host(path: str) -> bool:
+    """False when ``path`` is an ELF binary built for a different architecture.
+
+    Non-ELF files (a shell wrapper, a script) and unreadable headers are not this
+    function's business -- they stay "probably fine" and the spawn is the real test.
+    """
+    expected = _ELF_MACHINE_BY_ARCH.get(platform.machine().lower())
+    if expected is None:
+        return True
+    try:
+        with open(path, "rb") as f:
+            header = f.read(20)
+    except OSError:
+        return True
+    if len(header) < 20 or header[:4] != b"\x7fELF":
+        return True
+    endian = "<H" if header[5] == 1 else ">H"
+    return struct.unpack(endian, header[18:20])[0] == expected
+
+
+def _is_usable(path: str) -> bool:
+    """Executable AND runnable on this host -- the check every local lookup must use."""
+    return _is_executable(path) and _runs_on_this_host(path)
+
+
 def _find_local_tirith() -> str | None:
     """Cheap local lookup for the default "tirith": PATH, then $HERMES_HOME/bin."""
     hermes_bin = os.path.join(_hermes_bin_dir(), "tirith")
-    return shutil.which("tirith") or (hermes_bin if _is_executable(hermes_bin) else None)
+    for candidate in (shutil.which("tirith"), hermes_bin):
+        if candidate and _is_usable(candidate):
+            return candidate
+        if candidate and _is_executable(candidate):
+            # Wrong arch (or unreadable header): treat as absent so the installer runs and
+            # replaces it, instead of handing back a binary that can only fail to spawn.
+            logger.info("tirith at %s is not runnable on %s/%s; reinstalling",
+                        candidate, platform.system(), platform.machine())
+    return None
 
 
 def _resolve_locally(configured_path: str, *, warn_missing: bool) -> tuple[str | None, bool]:
@@ -377,9 +419,21 @@ def _resolve_locally(configured_path: str, *, warn_missing: bool) -> tuple[str |
     expanded = os.path.expanduser(configured_path)
     # An explicit (non-"tirith") path is authoritative: never auto-download a replacement.
     if configured_path != "tirith":
-        if found := (expanded if _is_executable(expanded) else shutil.which(expanded)):
-            _store_resolved(found)
-            return found, False
+        # shutil.which accepts an absolute path on executability alone, so gate its result
+        # through the same arch check -- otherwise it re-resolves the binary _is_usable rejected.
+        candidate = expanded if _is_usable(expanded) else shutil.which(expanded)
+        if candidate and _is_usable(candidate):
+            _store_resolved(candidate)
+            return candidate, False
+        # An explicit path that exists but is built for another architecture can only ever
+        # fail to spawn. Say so instead of resolving it and failing open on every command.
+        if _is_executable(expanded) and not _runs_on_this_host(expanded):
+            logger.warning(
+                "Configured tirith path %r is built for a different architecture than this host "
+                "(%s/%s); it cannot run, so scanning is disabled. Install the %s build.",
+                configured_path, platform.system(), platform.machine(), platform.machine())
+            _set_failed("explicit_path_wrong_arch")
+            return None, False
         if warn_missing:
             logger.warning("Configured tirith path %r not found; scanning disabled", configured_path)
         _set_failed("explicit_path_missing")
@@ -456,7 +510,7 @@ def ensure_installed(*, log_failures: bool = True):
     if not cfg["tirith_enabled"]:
         return None
     if cached := _cached_path():
-        return cached if _is_executable(cached) else None
+        return cached if _is_usable(cached) else None
     # No tirith build here (e.g. Windows): stay silent -- no PATH probe, no download thread,
     # no disk marker. Pattern-matching guards still run.
     if not is_platform_supported():
