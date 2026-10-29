@@ -17,23 +17,20 @@ from providers.base import ProviderProfile
 # kilo-free-models.json, openrouter-free-models.json) + the synthetic aliases.
 _FALLBACK_MODELS = (
     "zen-big-pickle",
-    # Zen free tier (2026-10-19 roster: 12 models)
+    # Zen free tier (2026-10-29 roster: 8 models; longcat-2.5 + nemotron-3-ultra
+    # retired upstream, flint-40b added)
     "zen-beam-free",
-    "zen-cat-jam-free",
     "zen-deepseek-v4.1-flash-free",
-    "zen-exo-free",
+    "zen-flint-40b-free",
     "zen-glm-5.3-flash-free",
-    "zen-longcat-2.5-preview-free",
     "zen-mimo-v2.6-flash-free",
-    "zen-minimax-m3.1-flash-free",
-    "zen-nemotron-3-ultra-free",
     "zen-nemotron-3.5-lightning-free",
     "zen-nemotron-3.5-super-vl-free",
     # Kilo free (per-IP free pool)
     "kilo-kilo-auto/free",
     "kilo-openrouter/free",
     "kilo-nvidia/nemotron-3-ultra-550b-a55b:free",
-    "kilo-nvidia/nemotron-3-super-120b-a12b:free",
+    "kilo-reflection/beam-free",
     # OpenRouter free (separate quota pool from kilo)
     "openrouter-openrouter/free",
     # Synthetic (aliases auto-route to the current checkpoint)
